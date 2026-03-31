@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Travel Time</title>
+</head>
+<body>
+
+<h2 id="output">Loading...</h2>
+
+<script>
+function getTravelTime() {
+  const service = new google.maps.DistanceMatrixService();
+
+  service.getDistanceMatrix(
+    {
+        origins: ["1100 North Ave, Grand Junction, CO"],
+        destinations: ["1600 Amphitheatre Parkway, Mountain View, CA"],
+        travelMode: "DRIVING",
+    },
+    (response, status) => {
+      if (status === "OK") {
+        const result = response.rows[0].elements[0];
+
+        document.getElementById("output").innerText =
+          `Distance: ${result.distance.text}, Time: ${result.duration.text}`;
+      }
+    }
+  );
+}
+</script>
+
+<script async
+src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCgicWPekLWaA8WSURdoEPfrRbYJ7UD6As&callback=getTravelTime">
+</script>
+
+</body>
+</html>
