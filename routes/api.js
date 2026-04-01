@@ -23,8 +23,8 @@ router.get('/travel-time', async (req, res) => {
         }
         const url = `https://maps.googleapis.com/maps/api/distancematrix/json` +
         `?origins=${encodeURIComponent(origin)}` +
-        `&destinations=${destination}` +
-        `&key=${API_KEY}`;
+        `&destinations=${encodeURIComponent(destination)}` +
+        `&key=${apiKey}`;
 
         const response = await fetch(url);
         const data = await response.json();
