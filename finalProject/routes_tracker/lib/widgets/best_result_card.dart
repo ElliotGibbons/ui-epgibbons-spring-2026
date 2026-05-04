@@ -7,6 +7,7 @@ class BestResultCard extends StatelessWidget {
   final String bestDuration;
   final String bestDepartureTimeRaw;
   final String bestArrivalLabel;
+  final String timeSavedText;
 
   const BestResultCard({
     super.key,
@@ -14,6 +15,7 @@ class BestResultCard extends StatelessWidget {
     required this.bestDuration,
     required this.bestDepartureTimeRaw,
     required this.bestArrivalLabel,
+    required this.timeSavedText,
   });
 
   @override
@@ -61,17 +63,21 @@ class BestResultCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              const Text(
-                'Best Departure Time',
-                style: TextStyle(
-                  fontSize: 23,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF0F172A),
+              const Expanded(
+                child: Text(
+                  'Recommended Departure Time',
+                  style: TextStyle(
+                    fontSize: 23,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0F172A),
+                  ),
                 ),
               ),
             ],
           ),
+
           const SizedBox(height: 20),
+
           Wrap(
             spacing: 14,
             runSpacing: 14,
@@ -87,17 +93,53 @@ class BestResultCard extends StatelessWidget {
                 icon: Icons.directions_car_filled_rounded,
               ),
               InfoPill(
+                title: 'Arrive At',
+                value: bestArrivalLabel.isEmpty
+                    ? 'Unknown arrival'
+                    : bestArrivalLabel,
+                icon: Icons.flag_rounded,
+              ),
+              InfoPill(
                 title: 'Date',
                 value: formatDateMMDDYYYY(bestDepartureTimeRaw),
                 icon: Icons.event_rounded,
               ),
-              InfoPill(
-                title: 'Arrive At',
-                value: bestArrivalLabel.isEmpty ? 'Unknown arrival' : bestArrivalLabel,
-                icon: Icons.flag_rounded,
-              ),
             ],
           ),
+
+          if (timeSavedText.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.85),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: const Color(0xFFBBF7D0)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.savings_rounded,
+                    color: Color(0xFF15803D),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      timeSavedText,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF14532D),
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );

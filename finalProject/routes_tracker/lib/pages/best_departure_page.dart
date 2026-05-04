@@ -9,6 +9,8 @@ import '../widgets/best_result_card.dart';
 import '../widgets/ranked_results_list.dart';
 import '../widgets/footer_note.dart';
 import '../widgets/travel_time_bar_chart.dart';
+import '../widgets/trip_summary_card.dart';
+import '../widgets/arrival_goal_rankings.dart';
 
 
 class BestDeparturePage extends StatefulWidget {
@@ -22,6 +24,7 @@ class _BestDeparturePageState extends State<BestDeparturePage> {
   final TextEditingController originController = TextEditingController();
   final TextEditingController destinationController = TextEditingController();
   final TextEditingController dateController = TextEditingController();
+  final TextEditingController targetArrivalController = TextEditingController();
 
   final DepartureService departureService = DepartureService();
 
@@ -36,6 +39,12 @@ class _BestDeparturePageState extends State<BestDeparturePage> {
   double loadingProgress = 0.0;
   String loadingMessage = '';
   Timer? loadingTimer;
+  
+  String tripOrigin = '';
+  String tripDestination = '';
+  String tripDateDisplay = '';
+
+  TimeOfDay? targetArrivalTime;
 
   List<Map<String, dynamic>> rankedResults = [];
 
@@ -45,7 +54,55 @@ class _BestDeparturePageState extends State<BestDeparturePage> {
     destinationController.dispose();
     dateController.dispose();
     loadingTimer?.cancel();
+    targetArrivalController.dispose();
     super.dispose();
+  }
+
+  String calculateTimeSavedText() {
+    if (rankedResults.length < 2) {
+      return '';
+    }
+
+    final durations = rankedResults.map((item) {
+      final value = item['durationSeconds'];
+
+      if (value is int) {
+        return value;
+      }
+
+      if (value is double) {
+        return value.round();
+      }
+
+      return int.tryParse(value.toString()) ?? 0;
+    }).where((seconds) => seconds > 0).toList();
+
+    if (durations.length < 2) {
+      return '';
+    }
+
+    final fastest = durations.reduce((a, b) => a < b ? a : b);
+    final slowest = durations.reduce((a, b) => a > b ? a : b);
+    final savedSeconds = slowest - fastest;
+
+    if (savedSeconds <= 0) {
+      return '';
+    }
+
+    final hours = savedSeconds ~/ 3600;
+    final minutes = ((savedSeconds % 3600) / 60).round();
+
+    String savedText;
+
+    if (hours > 0 && minutes > 0) {
+      savedText = '$hours hr $minutes min';
+    } else if (hours > 0) {
+      savedText = '$hours hr';
+    } else {
+      savedText = '$minutes min';
+    }
+
+    return 'Recommended option: leaving at $bestDepartureLabel could save about $savedText compared to the slowest departure time.';
   }
 
   String convertMMDDYYYYToISO(String input) {
@@ -115,6 +172,45 @@ class _BestDeparturePageState extends State<BestDeparturePage> {
     });
   }
 
+  Future<void> pickTripDate() async {
+    final now = DateTime.now();
+
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: now.add(const Duration(days: 1)),
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 365)),
+    );
+
+    if (pickedDate == null) {
+      return;
+    }
+
+    final month = pickedDate.month.toString().padLeft(2, '0');
+    final day = pickedDate.day.toString().padLeft(2, '0');
+    final year = pickedDate.year.toString();
+
+    setState(() {
+      dateController.text = '$month/$day/$year';
+    });
+  }
+
+  Future<void> pickTargetArrivalTime() async {
+    final pickedTime = await showTimePicker(
+      context: context,
+      initialTime: targetArrivalTime ?? TimeOfDay.now(),
+    );
+
+    if (pickedTime == null) {
+      return;
+    }
+
+    setState(() {
+      targetArrivalTime = pickedTime;
+      targetArrivalController.text = pickedTime.format(context);
+    });
+  }
+
   Future<void> fetchBestDepartureTime() async {
     final origin = originController.text.trim();
     final destination = destinationController.text.trim();
@@ -174,11 +270,16 @@ class _BestDeparturePageState extends State<BestDeparturePage> {
       setState(() {
         loadingProgress = 1.0;
         loadingMessage = 'Route calculations complete!';
+
         bestDepartureLabel = data['bestDepartureLabel']?.toString() ?? '';
         bestDuration = data['bestDuration']?.toString() ?? '';
         bestDepartureTimeRaw = data['bestDepartureTime']?.toString() ?? '';
         bestArrivalLabel = data['bestArrivalLabel']?.toString() ?? '';
         rankedResults = List<Map<String, dynamic>>.from(data['results'] ?? []);
+
+        tripOrigin = origin;
+        tripDestination = destination;
+        tripDateDisplay = dateInput;
       });
     } catch (e) {
       loadingTimer?.cancel();
@@ -249,10 +350,43 @@ class _BestDeparturePageState extends State<BestDeparturePage> {
           const SizedBox(height: 14),
           TextField(
             controller: dateController,
+            readOnly: true,
+            onTap: pickTripDate,
             decoration: appInputDecoration(
               label: 'Date',
               hint: 'MM/DD/YYYY',
               icon: Icons.calendar_month_rounded,
+            ).copyWith(
+              suffixIcon: const Icon(Icons.arrow_drop_down_rounded),
+            ),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: targetArrivalController,
+            readOnly: true,
+            onTap: pickTargetArrivalTime,
+            decoration: appInputDecoration(
+              label: 'Optional Target Arrival Time',
+              hint: 'Example: 6:30 PM',
+              icon: Icons.alarm_rounded,
+            ).copyWith(
+              suffixIcon: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (targetArrivalTime != null)
+                    IconButton(
+                      tooltip: 'Clear target arrival time',
+                      icon: const Icon(Icons.clear_rounded),
+                      onPressed: () {
+                        setState(() {
+                          targetArrivalTime = null;
+                          targetArrivalController.clear();
+                        });
+                      },
+                    ),
+                  const Icon(Icons.arrow_drop_down_rounded),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 18),
@@ -284,6 +418,34 @@ class _BestDeparturePageState extends State<BestDeparturePage> {
     );
   }
 
+  DateTime? buildTargetArrivalDateTime() {
+    if (targetArrivalTime == null || tripDateDisplay.isEmpty) {
+      return null;
+    }
+
+    final parts = tripDateDisplay.split('/');
+
+    if (parts.length != 3) {
+      return null;
+    }
+
+    final month = int.tryParse(parts[0]);
+    final day = int.tryParse(parts[1]);
+    final year = int.tryParse(parts[2]);
+
+    if (month == null || day == null || year == null) {
+      return null;
+    }
+
+    return DateTime(
+      year,
+      month,
+      day,
+      targetArrivalTime!.hour,
+      targetArrivalTime!.minute,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -312,11 +474,21 @@ class _BestDeparturePageState extends State<BestDeparturePage> {
                   loadingMessage: loadingMessage,
                 ),
                 if (!isLoading && errorMessage.isEmpty) ...[
+                  TripSummaryCard(
+                    origin: tripOrigin,
+                    destination: tripDestination,
+                    date: tripDateDisplay,
+                    comparedCount: rankedResults.length,
+                  ),
+
+                  const SizedBox(height: 18),
+
                   BestResultCard(
                     bestDepartureLabel: bestDepartureLabel,
                     bestDuration: bestDuration,
                     bestDepartureTimeRaw: bestDepartureTimeRaw,
                     bestArrivalLabel: bestArrivalLabel,
+                    timeSavedText: calculateTimeSavedText(),
                   ),
                   if (bestDepartureLabel.isNotEmpty) ...[
                     const SizedBox(height: 18),
@@ -326,8 +498,17 @@ class _BestDeparturePageState extends State<BestDeparturePage> {
                     ),
 
                     const SizedBox(height: 18),
+
+                    if (buildTargetArrivalDateTime() != null) ...[
+                      ArrivalGoalRankings(
+                        rankedResults: rankedResults,
+                        targetArrivalTime: buildTargetArrivalDateTime()!,
+                      ),
+                      const SizedBox(height: 18),
+                    ],
+
+                    RankedResultsList(rankedResults: rankedResults),
                   ],
-                  RankedResultsList(rankedResults: rankedResults),
                 ],
                 const FooterNote(),
               ],
