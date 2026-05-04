@@ -3,11 +3,15 @@ import 'package:flutter/material.dart';
 class StatusSection extends StatelessWidget {
   final bool isLoading;
   final String errorMessage;
+  final double loadingProgress;
+  final String loadingMessage;
 
   const StatusSection({
     super.key,
     required this.isLoading,
     required this.errorMessage,
+    required this.loadingProgress,
+    required this.loadingMessage,
   });
 
   @override
@@ -27,16 +31,73 @@ class StatusSection extends StatelessWidget {
             ),
           ],
         ),
-        child: const Column(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 14),
+            const Row(
+              children: [
+                Icon(
+                  Icons.route_rounded,
+                  color: Color(0xFF2563EB),
+                ),
+                SizedBox(width: 10),
+                Text(
+                  'Generating route data',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 14),
+
             Text(
-              'Checking departure times...',
-              style: TextStyle(
-                fontSize: 16,
+              loadingMessage.isEmpty
+                  ? 'Calculating travel times...'
+                  : loadingMessage,
+              style: const TextStyle(
+                fontSize: 15,
                 fontWeight: FontWeight.w600,
+                color: Color(0xFF334155),
               ),
+            ),
+
+            const SizedBox(height: 16),
+
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: loadingProgress.clamp(0.0, 1.0),
+                minHeight: 14,
+                backgroundColor: const Color(0xFFE2E8F0),
+                color: const Color(0xFF2563EB),
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '${(loadingProgress.clamp(0.0, 1.0) * 100).toStringAsFixed(0)}%',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+                Text(
+                  'Please keep this page open',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
             ),
           ],
         ),

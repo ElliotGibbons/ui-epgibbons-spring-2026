@@ -6,12 +6,14 @@ class BestResultCard extends StatelessWidget {
   final String bestDepartureLabel;
   final String bestDuration;
   final String bestDepartureTimeRaw;
+  final String bestArrivalLabel;
 
   const BestResultCard({
     super.key,
     required this.bestDepartureLabel,
     required this.bestDuration,
     required this.bestDepartureTimeRaw,
+    required this.bestArrivalLabel,
   });
 
   @override
@@ -88,6 +90,11 @@ class BestResultCard extends StatelessWidget {
                 title: 'Date',
                 value: formatDateMMDDYYYY(bestDepartureTimeRaw),
                 icon: Icons.event_rounded,
+              ),
+              InfoPill(
+                title: 'Arrive At',
+                value: bestArrivalLabel.isEmpty ? 'Unknown arrival' : bestArrivalLabel,
+                icon: Icons.flag_rounded,
               ),
             ],
           ),
