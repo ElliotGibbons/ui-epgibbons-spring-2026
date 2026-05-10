@@ -18,22 +18,64 @@ class ArrivalGoalRankings extends StatefulWidget {
 class _ArrivalGoalRankingsState extends State<ArrivalGoalRankings> {
   bool isExpanded = false;
 
-  int getArrivalDifferenceMinutes(Map<String, dynamic> item) {
-    final arrivalRaw = item['arrivalTime']?.toString() ?? '';
+  DateTime? parseArrivalLabelToTargetDate(Map<String, dynamic> item) {
+    final arrivalLabel = item['arrivalLabel']?.toString() ?? '';
 
-    if (arrivalRaw.isEmpty) {
+    if (arrivalLabel.isEmpty || arrivalLabel == 'Unknown arrival') {
+      return null;
+    }
+
+    final regex = RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)$', caseSensitive: false);
+    final match = regex.firstMatch(arrivalLabel.trim());
+
+    if (match == null) {
+      return null;
+    }
+
+    var hour = int.tryParse(match.group(1) ?? '');
+    final minute = int.tryParse(match.group(2) ?? '');
+    final period = match.group(3)?.toUpperCase();
+
+    if (hour == null || minute == null || period == null) {
+      return null;
+    }
+
+    if (period == 'PM' && hour != 12) {
+      hour += 12;
+    }
+
+    if (period == 'AM' && hour == 12) {
+      hour = 0;
+    }
+
+    return DateTime(
+      widget.targetArrivalTime.year,
+      widget.targetArrivalTime.month,
+      widget.targetArrivalTime.day,
+      hour,
+      minute,
+    );
+  }
+
+  int getSignedArrivalDifferenceMinutes(Map<String, dynamic> item) {
+    final arrivalTime = parseArrivalLabelToTargetDate(item);
+
+    if (arrivalTime == null) {
       return 999999;
     }
 
-    try {
-      final arrivalTime = DateTime.parse(arrivalRaw).toLocal();
-      return arrivalTime
-          .difference(widget.targetArrivalTime)
-          .inMinutes
-          .abs();
-    } catch (e) {
-      return 999999;
-    }
+    return arrivalTime.difference(widget.targetArrivalTime).inMinutes;
+  }
+
+  int getAbsoluteArrivalDifferenceMinutes(Map<String, dynamic> item) {
+    return getSignedArrivalDifferenceMinutes(item).abs();
+  }
+
+  bool arrivesInsideAllowedWindow(Map<String, dynamic> item) {
+    final signedMinutes = getSignedArrivalDifferenceMinutes(item);
+
+    // Keep results that arrive from 2 hours early through 30 minutes late.
+    return signedMinutes >= -120 && signedMinutes <= 30;
   }
 
   int getDurationSeconds(Map<String, dynamic> item) {
@@ -50,45 +92,37 @@ class _ArrivalGoalRankingsState extends State<ArrivalGoalRankings> {
     return int.tryParse(value.toString()) ?? 999999;
   }
 
-    String formatDifferenceForItem(Map<String, dynamic> item) {
-        final arrivalRaw = item['arrivalTime']?.toString() ?? '';
+  String formatDifferenceForItem(Map<String, dynamic> item) {
+    final signedMinutes = getSignedArrivalDifferenceMinutes(item);
 
-        if (arrivalRaw.isEmpty) {
-            return 'Unknown arrival match';
-        }
-
-        try {
-            final arrivalTime = DateTime.parse(arrivalRaw).toLocal();
-            final signedMinutes =
-                arrivalTime.difference(widget.targetArrivalTime).inMinutes;
-
-            if (signedMinutes == 0) {
-            return 'Arrives exactly on time';
-            }
-
-            final absMinutes = signedMinutes.abs();
-            final hours = absMinutes ~/ 60;
-            final minutes = absMinutes % 60;
-
-            String timeText;
-
-            if (hours > 0 && minutes > 0) {
-            timeText = '$hours hr $minutes min';
-            } else if (hours > 0) {
-            timeText = '$hours hr';
-            } else {
-            timeText = '$minutes min';
-            }
-
-            if (signedMinutes < 0) {
-            return 'Arrives $timeText early';
-            }
-
-            return 'Arrives $timeText late';
-        } catch (e) {
-            return 'Unknown arrival match';
-        }
+    if (signedMinutes == 999999) {
+      return 'Unknown arrival match';
     }
+
+    if (signedMinutes == 0) {
+      return 'Arrives exactly on time';
+    }
+
+    final absMinutes = signedMinutes.abs();
+    final hours = absMinutes ~/ 60;
+    final minutes = absMinutes % 60;
+
+    String timeText;
+
+    if (hours > 0 && minutes > 0) {
+      timeText = '$hours hr $minutes min';
+    } else if (hours > 0) {
+      timeText = '$hours hr';
+    } else {
+      timeText = '$minutes min';
+    }
+
+    if (signedMinutes < 0) {
+      return 'Arrives $timeText early';
+    }
+
+    return 'Arrives $timeText late';
+  }
 
   String formatTargetTime(DateTime dateTime) {
     var hour = dateTime.hour;
@@ -109,80 +143,118 @@ class _ArrivalGoalRankingsState extends State<ArrivalGoalRankings> {
       return const SizedBox.shrink();
     }
 
-    final goalRankings = widget.rankedResults.where((item) {
-        final arrivalRaw = item['arrivalTime']?.toString() ?? '';
-
-        if (arrivalRaw.isEmpty) {
-            return false;
-        }
-
-        try {
-            final arrivalTime = DateTime.parse(arrivalRaw).toLocal();
-
-            final minutesAfterTarget =
-                arrivalTime.difference(widget.targetArrivalTime).inMinutes;
-
-            // Keep anything before the target time.
-            // Keep anything up to 30 minutes after the target time.
-            // Throw away anything more than 30 minutes late.
-            return minutesAfterTarget <= 30;
-        } catch (e) {
-            return false;
-        }
-        }).toList();
+    final goalRankings = widget.rankedResults
+        .where(arrivesInsideAllowedWindow)
+        .toList();
 
         goalRankings.sort((a, b) {
-        final aDifference = getArrivalDifferenceMinutes(a);
-        final bDifference = getArrivalDifferenceMinutes(b);
+            final aSigned = getSignedArrivalDifferenceMinutes(a);
+            final bSigned = getSignedArrivalDifferenceMinutes(b);
 
-        if (aDifference != bDifference) {
-            return aDifference.compareTo(bDifference);
-        }
+            final aAbs = aSigned.abs();
+            final bAbs = bSigned.abs();
 
-        final aDuration = getDurationSeconds(a);
-        final bDuration = getDurationSeconds(b);
+            final aIsGoodEarly = aSigned >= -45 && aSigned <= 0;
+            final bIsGoodEarly = bSigned >= -45 && bSigned <= 0;
 
-        return aDuration.compareTo(bDuration);
-        });
+            final aIsLate = aSigned > 0;
+            final bIsLate = bSigned > 0;
 
-        if (goalRankings.isEmpty) {
-            return Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                    BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 18,
-                    offset: const Offset(0, 8),
-                    ),
-                ],
-                ),
-                child: const Row(
-                children: [
-                    Icon(
-                    Icons.info_outline_rounded,
-                    color: Color(0xFF2563EB),
-                    ),
-                    SizedBox(width: 10),
-                    Expanded(
-                    child: Text(
-                        'No departure times arrive within 30 minutes after your target arrival time.',
-                        style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF0F172A),
-                        ),
-                    ),
-                    ),
-                ],
-                ),
-            );
+            final aDuration = getDurationSeconds(a);
+            final bDuration = getDurationSeconds(b);
+
+            int bucket(int minutes) {
+                return (minutes.abs() / 30).floor();
             }
 
-    
+            // Priority 1:
+            // Arriving up to 45 minutes early is better than arriving late.
+            if (aIsGoodEarly != bIsGoodEarly) {
+                return aIsGoodEarly ? -1 : 1;
+            }
+
+            // Priority 2:
+            // If both are in the 45-minute early window,
+            // compare by 30-minute closeness bucket, then shortest travel time.
+            if (aIsGoodEarly && bIsGoodEarly) {
+                final aBucket = bucket(aSigned);
+                final bBucket = bucket(bSigned);
+
+                if (aBucket != bBucket) {
+                return aBucket.compareTo(bBucket);
+                }
+
+                return aDuration.compareTo(bDuration);
+            }
+
+            // Priority 3:
+            // If both are late,
+            // compare by 30-minute lateness bucket, then shortest travel time.
+            if (aIsLate && bIsLate) {
+                final aBucket = bucket(aSigned);
+                final bBucket = bucket(bSigned);
+
+                if (aBucket != bBucket) {
+                return aBucket.compareTo(bBucket);
+                }
+
+                return aDuration.compareTo(bDuration);
+            }
+
+            // Priority 4:
+            // If both are earlier than 45 minutes,
+            // compare by 30-minute closeness bucket, then shortest travel time.
+            final aBucket = bucket(aSigned);
+            final bBucket = bucket(bSigned);
+
+            if (aBucket != bBucket) {
+                return aBucket.compareTo(bBucket);
+            }
+
+            if (aAbs != bAbs) {
+                return aAbs.compareTo(bAbs);
+            }
+
+            return aDuration.compareTo(bDuration);
+        });
+
+    if (goalRankings.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: const Row(
+          children: [
+            Icon(
+              Icons.info_outline_rounded,
+              color: Color(0xFF2563EB),
+            ),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'No departure times arrive between 2 hours early and 30 minutes late for your target arrival time.',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     final best = goalRankings.first;
     final bestDeparture = best['departureLabel']?.toString() ?? 'Unknown time';
     final bestArrival = best['arrivalLabel']?.toString() ?? 'Unknown arrival';
@@ -275,7 +347,7 @@ class _ArrivalGoalRankingsState extends State<ArrivalGoalRankings> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'These results are ranked first by closest arrival time, then by shortest travel time.',
+                    'These results arrive between 2 hours early and 30 minutes late. They are ranked by closest arrival time, then early arrivals, then shortest travel time.',
                     style: TextStyle(
                       fontSize: 14,
                       color: Colors.grey.shade700,
